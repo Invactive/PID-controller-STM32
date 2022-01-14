@@ -13,7 +13,8 @@ Funkcjonalności:
 Elementy:
 - NUCLEO-STM32F767ZI
 - Rezystor ceramiczny 22 Ohm, 5W
-- Zasilanie modułem HW-131
+- Moduł zasilania HW-131
+- Tranzystor BC337-25
 - Czujnik temperatury BMP280
 - Enkoder obrotowy
 - Wyświetlacz LCD
