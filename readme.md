@@ -1,1 +1,1 @@
-# Hi
+# Projekt regulatora PID - regulacja temperatury rezystora
