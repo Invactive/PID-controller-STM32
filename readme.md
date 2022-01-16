@@ -22,6 +22,7 @@ Elementy:
 
 
 Źródła:
+- https://os.mbed.com/platforms/ST-Nucleo-F767ZI/
 - https://msalamon.pl/dziecinnie-prosta-sprzetowa-obsluga-enkodera-na-stm32/
 - 
 
