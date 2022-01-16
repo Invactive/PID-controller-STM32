@@ -22,8 +22,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-# include "BMPXX80.h"
+#include "stdio.h"
+#include "string.h"
+#include "BMPXX80.h"
+#include "LCD.h"
+
 
 /* USER CODE END Includes */
 
@@ -34,6 +37,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -45,6 +49,8 @@
 
 I2C_HandleTypeDef hi2c1;
 
+TIM_HandleTypeDef htim1;
+
 UART_HandleTypeDef huart3;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -52,11 +58,20 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 /* USER CODE BEGIN PV */
 float Tp = 0.01;
 float current_temp_f;
-char current_temp_ch[10];
+char current_temp_ch[29];
+float set_temp_f = 20;
+
+char set_temp_ch[24];
 int32_t pressure;
 
+uint32_t enc_uint;
+static uint32_t prev_enc_uint = 65535 / 2;
+int32_t enc_diff_int;
+
+char enc_ch[64];
 char mess[] = "Hello";
 
+char text_buffer[16];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,6 +80,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -105,9 +121,17 @@ int main(void)
   MX_USART3_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
   MX_I2C1_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   BMP280_Init(&hi2c1, BMP280_TEMPERATURE_16BIT, BMP280_STANDARD, BMP280_FORCEDMODE);
 
+  // prevents from bugging set_temp_f when encoder counter value goes through 0
+  htim1.Instance->CNT = 65535 / 2;
+
+  LCD_init();
+  LCD_write_command(LCD_CLEAR_INSTRUCTION);
+  LCD_write_command(LCD_HOME_INSTRUCTION);
 
 
   /* USER CODE END 2 */
@@ -119,11 +143,38 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  BMP280_ReadTemperatureAndPressure(&current_temp_f, &pressure);
-	  sprintf(current_temp_ch, "%f", current_temp_f);
-	  HAL_UART_Transmit(&huart3, (uint8_t *)current_temp_ch, sizeof(current_temp_ch)-1, 10000);
-	  HAL_Delay(1000);
 
+	  // TEMPERATURE
+	  BMP280_ReadTemperatureAndPressure(&current_temp_f, &pressure);
+	  sprintf(current_temp_ch, "Current temperature: %.2f\n\r", current_temp_f);
+	  HAL_UART_Transmit(&huart3, (uint8_t *)current_temp_ch, sizeof(current_temp_ch)-1, 10000);
+
+	  // ENCODER
+	  enc_uint = __HAL_TIM_GET_COUNTER(&htim1);	//enc_uint = htim1.Instance->CNT;
+	  enc_diff_int = enc_uint - prev_enc_uint;
+	  if(enc_diff_int >= 4 || enc_diff_int <= -4){
+		  enc_diff_int /= 4;
+		  set_temp_f += 0.5 * enc_diff_int;
+		  if(set_temp_f > 65) set_temp_f = 65;
+		  if(set_temp_f < 20) set_temp_f = 20;
+	  }
+	  prev_enc_uint = enc_uint;
+	  sprintf((char*)set_temp_ch, "Set temperature: %.2f\n\r", set_temp_f);
+	  HAL_UART_Transmit(&huart3, (uint8_t*)set_temp_ch, strlen(set_temp_ch), 1000);
+
+	  // LCD
+	  snprintf(current_temp_ch, LCD_MAXIMUM_LINE_LENGTH, "Temp:  %.2f", current_temp_f);
+	  LCD_write_text(current_temp_ch);
+	  LCD_write_data(LCD_CHAR_DEGREE);
+	  LCD_write_char('C');
+	  snprintf(set_temp_ch, LCD_MAXIMUM_LINE_LENGTH, "Set T: %.2f", set_temp_f);
+	  LCD_goto_line(1);
+	  LCD_write_text(set_temp_ch);
+	  LCD_write_data(LCD_CHAR_DEGREE);
+	  LCD_write_char('C');
+	  HAL_Delay(100);
+	  LCD_write_text("                ");
+	  LCD_write_command(LCD_HOME_INSTRUCTION);
 
 
 
@@ -241,6 +292,57 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 65535;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 15;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 15;
+  if (HAL_TIM_Encoder_Init(&htim1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
   * @brief USART3 Initialization Function
   * @param None
   * @retval None
@@ -320,6 +422,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -328,10 +431,24 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LCD_RS_GPIO_Port, LCD_RS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LD1_Pin|LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOD, LCD_Enable_Pin|LCD_DATA4_Pin|LCD_DATA5_Pin|LCD_DATA6_Pin
+                          |LCD_DATA7_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : LCD_RS_Pin */
+  GPIO_InitStruct.Pin = LCD_RS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LCD_RS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : USER_Btn_Pin */
   GPIO_InitStruct.Pin = USER_Btn_Pin;
@@ -382,6 +499,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LCD_Enable_Pin LCD_DATA4_Pin LCD_DATA5_Pin LCD_DATA6_Pin
+                           LCD_DATA7_Pin */
+  GPIO_InitStruct.Pin = LCD_Enable_Pin|LCD_DATA4_Pin|LCD_DATA5_Pin|LCD_DATA6_Pin
+                          |LCD_DATA7_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pins : RMII_TX_EN_Pin RMII_TXD0_Pin */
   GPIO_InitStruct.Pin = RMII_TX_EN_Pin|RMII_TXD0_Pin;
