@@ -21,6 +21,10 @@ Elementy:
 
 
 
+Źródła:
+- https://msalamon.pl/dziecinnie-prosta-sprzetowa-obsluga-enkodera-na-stm32/
+- 
+
 
 
 
