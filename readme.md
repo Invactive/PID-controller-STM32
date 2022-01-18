@@ -14,7 +14,7 @@ Elementy:
 - NUCLEO-STM32F767ZI
 - Rezystor ceramiczny 22 Ohm, 5W
 - Moduł zasilania HW-131
-- Tranzystor BC337-25
+- Tranzystor MOSFET IRF520N
 - Czujnik temperatury BMP280
 - Enkoder obrotowy
 - Wyświetlacz LCD
@@ -24,6 +24,7 @@ Elementy:
 Źródła:
 - https://os.mbed.com/platforms/ST-Nucleo-F767ZI/
 - https://msalamon.pl/dziecinnie-prosta-sprzetowa-obsluga-enkodera-na-stm32/
+- https://www.electronics-tutorials.ws/pl/tranzystor/mosfet-jako-przelacznik.html
 - 
 
 
