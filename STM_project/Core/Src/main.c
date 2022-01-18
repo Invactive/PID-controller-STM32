@@ -50,6 +50,8 @@
 I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart3;
 
@@ -58,10 +60,12 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 /* USER CODE BEGIN PV */
 float Tp = 0.01;
 float current_temp_f;
-char current_temp_ch[29];
+char current_temp_ch_UART[29];
+char current_temp_ch_LCD[29];
 float set_temp_f = 20;
 
-char set_temp_ch[24];
+char set_temp_ch_UART[24];
+char set_temp_ch_LCD[24];
 int32_t pressure;
 
 uint32_t enc_uint;
@@ -72,6 +76,9 @@ char enc_ch[64];
 char mess[] = "Hello";
 
 char text_buffer[16];
+
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,6 +88,8 @@ static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -122,8 +131,12 @@ int main(void)
   MX_USB_OTG_FS_PCD_Init();
   MX_I2C1_Init();
   MX_TIM1_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
+  HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   BMP280_Init(&hi2c1, BMP280_TEMPERATURE_16BIT, BMP280_STANDARD, BMP280_FORCEDMODE);
 
   // prevents from bugging set_temp_f when encoder counter value goes through 0
@@ -144,11 +157,6 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  // TEMPERATURE
-	  BMP280_ReadTemperatureAndPressure(&current_temp_f, &pressure);
-	  sprintf(current_temp_ch, "Current temperature: %.2f\n\r", current_temp_f);
-	  HAL_UART_Transmit(&huart3, (uint8_t *)current_temp_ch, sizeof(current_temp_ch)-1, 10000);
-
 	  // ENCODER
 	  enc_uint = __HAL_TIM_GET_COUNTER(&htim1);	//enc_uint = htim1.Instance->CNT;
 	  enc_diff_int = enc_uint - prev_enc_uint;
@@ -159,17 +167,16 @@ int main(void)
 		  if(set_temp_f < 20) set_temp_f = 20;
 	  }
 	  prev_enc_uint = enc_uint;
-	  sprintf((char*)set_temp_ch, "Set temperature: %.2f\n\r", set_temp_f);
-	  HAL_UART_Transmit(&huart3, (uint8_t*)set_temp_ch, strlen(set_temp_ch), 1000);
+
 
 	  // LCD
-	  snprintf(current_temp_ch, LCD_MAXIMUM_LINE_LENGTH, "Temp:  %.2f", current_temp_f);
-	  LCD_write_text(current_temp_ch);
+	  snprintf(current_temp_ch_LCD, LCD_MAXIMUM_LINE_LENGTH, "Temp:  %.2f", current_temp_f);
+	  LCD_write_text(current_temp_ch_LCD);
 	  LCD_write_data(LCD_CHAR_DEGREE);
 	  LCD_write_char('C');
-	  snprintf(set_temp_ch, LCD_MAXIMUM_LINE_LENGTH, "Set T: %.2f", set_temp_f);
+	  snprintf(set_temp_ch_LCD, LCD_MAXIMUM_LINE_LENGTH, "Set T: %.2f", set_temp_f);
 	  LCD_goto_line(1);
-	  LCD_write_text(set_temp_ch);
+	  LCD_write_text(set_temp_ch_LCD);
 	  LCD_write_data(LCD_CHAR_DEGREE);
 	  LCD_write_char('C');
 	  HAL_Delay(100);
@@ -339,6 +346,124 @@ static void MX_TIM1_Init(void)
   /* USER CODE BEGIN TIM1_Init 2 */
 
   /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 9600-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 10000-1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OC_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 96-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 1000-1;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 999;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
 
 }
 
@@ -520,7 +645,21 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+	if(htim->Instance == TIM3){
+		// TEMPERATURE
+		BMP280_ReadTemperatureAndPressure(&current_temp_f, &pressure);
+		sprintf(current_temp_ch_UART, "Current temperature: %.2f\n\r", current_temp_f);
+		HAL_UART_Transmit(&huart3, (uint8_t *)current_temp_ch_UART, sizeof(current_temp_ch_UART)-1, 10000);
 
+		sprintf((char*)set_temp_ch_UART, "Set temperature: %.2f\n\r", set_temp_f);
+		HAL_UART_Transmit(&huart3, (uint8_t*)set_temp_ch_UART, strlen(set_temp_ch_UART), 1000);
+
+//		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 500);
+
+	}
+
+}
 /* USER CODE END 4 */
 
 /**
