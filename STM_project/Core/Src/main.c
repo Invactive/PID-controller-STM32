@@ -55,6 +55,7 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart3;
+DMA_HandleTypeDef hdma_usart3_rx;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
@@ -62,7 +63,7 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 float current_temp_f;
 char current_temp_ch_UART[29];
 char current_temp_ch_LCD[29];
-float set_temp_f = 20;
+float set_temp_f = 20.0;
 
 char set_temp_ch_UART[24];
 char set_temp_ch_LCD[24];
@@ -76,9 +77,9 @@ char enc_ch[64];
 
 float pwm_duty_f;
 uint16_t pwm_duty_u = 0;
+float u_PID;
 
-char get_UART[5];
-char message[64];
+char get_UART[10];
 
 
 /* USER CODE END PV */
@@ -86,12 +87,14 @@ char message[64];
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -105,12 +108,13 @@ struct Controller{
 	float Tp;
 	float prev_error;
 	float prev_u_I;
+	float u;
 
 };
 
 
 float calculate_PID(struct Controller *PID, float set_temp, float meas_temp){
-	float u = 0;
+	PID->u = 0;
 	float error;
 	float u_P, u_I , u_D;
 
@@ -129,9 +133,9 @@ float calculate_PID(struct Controller *PID, float set_temp, float meas_temp){
 	PID->prev_error = error;
 
 	// Sum of P, I and D components
-	u = u_P + u_I + u_D;
+	PID->u = u_P + u_I + u_D;
 
-	return u;
+	return PID->u;
 }
 
 struct Controller PID1;
@@ -168,12 +172,16 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART3_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
   MX_I2C1_Init();
   MX_TIM1_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
+
+  /* Initialize interrupts */
+  MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
 
   // TIM1 used used for controlling MOSFET with PWM
@@ -185,9 +193,10 @@ int main(void)
   // TIM4 used for encoder
   HAL_TIM_Encoder_Start(&htim4, TIM_CHANNEL_ALL);
 
+  // BMP280 (temperature sensor) init
   BMP280_Init(&hi2c1, BMP280_TEMPERATURE_16BIT, BMP280_STANDARD, BMP280_FORCEDMODE);
 
-  // prevents from bugging set_temp_f when encoder counter value goes through 0
+  // Prevents from bugging set_temp_f when encoder counter value goes through 0
   htim4.Instance->CNT = 65535 / 2;
 
   LCD_init();
@@ -203,7 +212,7 @@ int main(void)
   PID1.prev_u_I = 0;
 
   // Get setpoint value from user
-  HAL_UART_Receive_IT(&huart3, (uint8_t*)get_UART, 5);
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart3, (uint8_t *)get_UART, 10);
 
 
   /* USER CODE END 2 */
@@ -217,15 +226,15 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 	  // ENCODER
-//	  enc_uint = __HAL_TIM_GET_COUNTER(&htim4);	// enc_uint = htim4.Instance->CNT;
-//	  enc_diff_int = enc_uint - prev_enc_uint;
-//	  if(enc_diff_int >= 2 || enc_diff_int <= -2){
-//		  enc_diff_int /= 2;
-//		  set_temp_f += 0.5 * enc_diff_int;
-//		  if(set_temp_f > 65) set_temp_f = 65;
-//		  if(set_temp_f < 20) set_temp_f = 20;
-//	  }
-//	  prev_enc_uint = enc_uint;
+	  enc_uint = __HAL_TIM_GET_COUNTER(&htim4);	// enc_uint = htim4.Instance->CNT;
+	  enc_diff_int = enc_uint - prev_enc_uint;
+	  if(enc_diff_int >= 2 || enc_diff_int <= -2){
+		  enc_diff_int /= 2;
+		  set_temp_f += 0.5 * enc_diff_int;
+		  if(set_temp_f > 65) set_temp_f = 65;
+		  if(set_temp_f < 20) set_temp_f = 20;
+	  }
+	  prev_enc_uint = enc_uint;
 
 	  // LCD
 	  snprintf(current_temp_ch_LCD, LCD_MAXIMUM_LINE_LENGTH, "Temp:  %.2f", current_temp_f);
@@ -241,7 +250,7 @@ int main(void)
 	  LCD_write_text("                ");
 	  LCD_write_command(LCD_HOME_INSTRUCTION);
 
-
+	  memset(get_UART, 0, 10);
 
   }
   /* USER CODE END 3 */
@@ -308,6 +317,20 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief NVIC Configuration.
+  * @retval None
+  */
+static void MX_NVIC_Init(void)
+{
+  /* USART3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(USART3_IRQn);
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
 }
 
 /**
@@ -601,6 +624,17 @@ static void MX_USB_OTG_FS_PCD_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -708,6 +742,7 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+// TIMERS callback handling
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim->Instance == TIM3){
 		// TEMPERATURE
@@ -718,16 +753,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		sprintf((char*)set_temp_ch_UART, "Set temperature: %.2f\n\r", set_temp_f);
 		HAL_UART_Transmit(&huart3, (uint8_t*)set_temp_ch_UART, strlen(set_temp_ch_UART), 1000);
 
-		sprintf((char*)message, "Set reference temperature through UART: \n\r");
-		HAL_UART_Transmit(&huart3, (uint8_t*)message, strlen(message), 1000);
-
 		pwm_duty_f = (htim1.Init.Period * calculate_PID(&PID1, set_temp_f, current_temp_f));
+		u_PID = PID1.u;
 
 		// Saturation
 		if(pwm_duty_f < 0.0) pwm_duty_u = 0;
 		else if(pwm_duty_f > htim1.Init.Period) pwm_duty_u = htim1.Init.Period;
 		else pwm_duty_u = (uint16_t) pwm_duty_f;
-
 
 		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_duty_u);
 
@@ -735,13 +767,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-	set_temp_f = atof(get_UART);
-	memset(get_UART, 0, sizeof get_UART);
-    HAL_UART_Receive_IT(&huart3, (uint8_t *)get_UART, 5);
+// UART callback handling
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
+	if(huart->Instance == USART3){
+		float tmp = atof(get_UART);
+		if(tmp < 20) set_temp_f = 20;
+		else if(tmp > 65) set_temp_f = 65;
+		else set_temp_f = tmp;
 
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart3, (uint8_t *)get_UART, 10);
 
+	}
 }
 
 /* USER CODE END 4 */
