@@ -77,7 +77,6 @@ char enc_ch[64];
 
 float pwm_duty_f;
 uint16_t pwm_duty_u = 0;
-float u_PID;
 
 char get_UART[10];
 
@@ -108,13 +107,12 @@ struct Controller{
 	float Tp;
 	float prev_error;
 	float prev_u_I;
-	float u;
 
 };
 
 
 float calculate_PID(struct Controller *PID, float set_temp, float meas_temp){
-	PID->u = 0;
+	float u = 0;
 	float error;
 	float u_P, u_I , u_D;
 
@@ -133,9 +131,9 @@ float calculate_PID(struct Controller *PID, float set_temp, float meas_temp){
 	PID->prev_error = error;
 
 	// Sum of P, I and D components
-	PID->u = u_P + u_I + u_D;
+	u = u_P + u_I + u_D;
 
-	return PID->u;
+	return u;
 }
 
 struct Controller PID1;
@@ -202,11 +200,12 @@ int main(void)
   LCD_init();
   LCD_write_command(LCD_CLEAR_INSTRUCTION);
   LCD_write_command(LCD_HOME_INSTRUCTION);
+  HAL_Delay(2000);
 
   // Initialize PID Controller parameters and init data
-  PID1.Kp = 0.5;
-  PID1.Ki = 0.5;
-  PID1.Kd = 0.5;
+  PID1.Kp = 0.03928;
+  PID1.Ki = 0.0002692;
+  PID1.Kd = 0.01957;
   PID1.Tp = 1;
   PID1.prev_error = 0;
   PID1.prev_u_I = 0;
@@ -250,6 +249,7 @@ int main(void)
 	  LCD_write_text("                ");
 	  LCD_write_command(LCD_HOME_INSTRUCTION);
 
+	  // Reset data from UART
 	  memset(get_UART, 0, 10);
 
   }
@@ -754,13 +754,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		HAL_UART_Transmit(&huart3, (uint8_t*)set_temp_ch_UART, strlen(set_temp_ch_UART), 1000);
 
 		pwm_duty_f = (htim1.Init.Period * calculate_PID(&PID1, set_temp_f, current_temp_f));
-		u_PID = PID1.u;
 
 		// Saturation
 		if(pwm_duty_f < 0.0) pwm_duty_u = 0;
 		else if(pwm_duty_f > htim1.Init.Period) pwm_duty_u = htim1.Init.Period;
 		else pwm_duty_u = (uint16_t) pwm_duty_f;
 
+//		pwm_duty_u = htim1.Init.Period;		// 100% PWM duty for creating model
 		__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm_duty_u);
 
 	}
@@ -776,7 +776,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
 		else set_temp_f = tmp;
 
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart3, (uint8_t *)get_UART, 10);
-
 	}
 }
 

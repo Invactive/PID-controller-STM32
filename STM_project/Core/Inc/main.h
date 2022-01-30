@@ -84,6 +84,10 @@ void Error_Handler(void);
 #define RMII_TXD1_GPIO_Port GPIOB
 #define LD3_Pin GPIO_PIN_14
 #define LD3_GPIO_Port GPIOB
+#define ENC_CLK_Pin GPIO_PIN_12
+#define ENC_CLK_GPIO_Port GPIOD
+#define ENC_DT_Pin GPIO_PIN_13
+#define ENC_DT_GPIO_Port GPIOD
 #define USB_PowerSwitchOn_Pin GPIO_PIN_6
 #define USB_PowerSwitchOn_GPIO_Port GPIOG
 #define USB_OverCurrent_Pin GPIO_PIN_7
