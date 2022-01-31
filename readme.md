@@ -21,6 +21,8 @@ Elementy:
 -	Enkoder obrotowy
 -	Wyświetlacz LCD 1602A
 
+Nagranie: https://youtu.be/86S8K2vb8bY
+
 
 
 Źródła:
