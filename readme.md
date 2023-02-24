@@ -23,7 +23,7 @@ Temperature controller with PID regulator and live data logger. Implemented on d
 [Schematics](./Screens_pdfs_txts/Schematics.pdf)
 
 ## Photos
-![](Screens_pdfs_txts/Fot_3.jpg)
+![](Screens_pdfs_txts/Fot_3.png)
 ![](Screens_pdfs_txts/Test_y.png)
 
 ## Demonstration video
